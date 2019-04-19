@@ -1,5 +1,6 @@
 using StringTools;
 
+import as3hx.As3.Program;
 import as3hx.Writer;
 import as3hx.Error;
 import sys.FileSystem;
@@ -18,7 +19,7 @@ class Run {
         }
     }
     
-    static function loop(src:String, dst:String, excludes:List<String>) {
+    static function loop(cfg: as3hx.Config, src:String, dst:String, excludes:List<String>) {
         if (src == null) {
             Sys.println("source path cannot be null");
         }
@@ -31,50 +32,59 @@ class Run {
         var writer = new Writer(cfg);
         for(f in FileSystem.readDirectory(src)) {
             var srcChildAbsPath = src.addTrailingSlash() + f;
-            var dstChildAbsPath = dst.addTrailingSlash() + f;
             if (FileSystem.isDirectory(srcChildAbsPath)) {
                 subDirList.push(f);
             } else if(f.endsWith(".as") && !isExcludeFile(excludes, srcChildAbsPath)) {
-                var file = srcChildAbsPath;
-                Sys.println("source AS3 file: " + file);
-                var p = new as3hx.Parser(cfg);
-                var content = File.getContent(file);
-                var program = try p.parseString(content, src, f) catch(e : Error) {
-                    #if macro
-                    File.stderr().writeString(file + ":" + p.tokenizer.line + ": " + errorString(e) + "\n");
-                    #end
-                    if(cfg.errorContinue) {
-                        errors.push("In " + file + "(" + p.tokenizer.line + ") : " + errorString(e));
-                        continue;
-                    } else {
-                        #if neko
-                            neko.Lib.rethrow("In " + file + "(" + p.tokenizer.line + ") : " + errorString(e));
-                        #elseif cpp
-                            cpp.Lib.rethrow("In " + file + "(" + p.tokenizer.line + ") : " + errorString(e));
-                            null;
-                        #end
-                    }
-                }
-                var out = dst;
-                ensureDirectoryExists(out);
-                var name = out.addTrailingSlash() + Writer.properCase(f.substr(0, -3), true) + ".hx";
-                Sys.println("target HX file: " + name);
-                var fw = File.write(name, false);
-                warnings.set(name, writer.process(program, fw));
-                fw.close();
-                if(cfg.postProcessor != "") {
-                    postProcessor(cfg.postProcessor, name);
-                }
-                if(cfg.verifyGeneratedFiles) {
-                    verifyGeneratedFile(f, src, name);
-                }
+                processFile(cfg, writer, src, dst, f);
             }
         }
         for (name in subDirList) {
-            loop((src.addTrailingSlash() + name), (dst.addTrailingSlash() + name), excludes);
+            loop(cfg, (src.addTrailingSlash() + name), (dst.addTrailingSlash() + name), excludes);
         }
     }
 
+	public static function processFile(cfg: as3hx.Config, writer: Writer, src: String, dst: String, f: String):Void 
+	{
+		var srcChildAbsPath = src.addTrailingSlash() + f;
+		
+		var file = srcChildAbsPath;
+		Sys.println("source AS3 file: " + file);
+		var p = new as3hx.Parser(cfg);
+		var content = File.getContent(file);
+		var program = try p.parseString(content, src, f) catch(e : Error) {
+			#if macro
+			File.stderr().writeString(file + ":" + p.tokenizer.line + ": " + errorString(e) + "\n");
+			#end
+			if(cfg.errorContinue) {
+				errors.push("In " + file + "(" + p.tokenizer.line + ") : " + errorString(e));
+				null;
+			} else {
+				#if neko
+					neko.Lib.rethrow("In " + file + "(" + p.tokenizer.line + ") : " + errorString(e));
+				#elseif cpp
+					cpp.Lib.rethrow("In " + file + "(" + p.tokenizer.line + ") : " + errorString(e));
+					null;
+				#end
+			}
+		}
+		if (program == null) {
+			return;
+		}
+		var out = dst;
+		ensureDirectoryExists(out);
+		var name = out.addTrailingSlash() + Writer.properCase(f.substr(0, -3), true) + ".hx";
+		Sys.println("target HX file: " + name);
+		var fw = File.write(name, false);
+		warnings.set(name, writer.process(program, fw));
+		fw.close();
+		if(cfg.postProcessor != "") {
+			postProcessor(cfg.postProcessor, name);
+		}
+		if(cfg.verifyGeneratedFiles) {
+			verifyGeneratedFile(f, src, name);
+		}
+	}
+	
     static function postProcessor(?postProcessor:String = "", ?outFile:String = "") {
         if(postProcessor != "" && outFile != "") {
             Sys.println('Running post-processor ' + postProcessor + ' on file: ' + outFile);
@@ -98,16 +108,15 @@ class Run {
         }
     }
 
-    static function isExcludeFile(excludes: List<String>, file: String)
+    public static function isExcludeFile(excludes: List<String>, file: String)
         return Lambda.filter(excludes, function (path) return as3hx.Config.toPath(file).indexOf(path.replace(".", "/")) > -1).length > 0;
 
     static var errors : Array<String> = new Array();
     static var warnings : Map<String,Map<String,Bool>> = new Map();
-    static var cfg : as3hx.Config;
     
     public static function main() {
-        cfg = new as3hx.Config();
-        loop(cfg.src, cfg.dst, cfg.excludePaths);
+        var cfg = new as3hx.Config();
+        loop(cfg, cfg.src, cfg.dst, cfg.excludePaths);
         Sys.println("");
         Writer.showWarnings(warnings);
         Sys.println("");
@@ -138,7 +147,7 @@ class Run {
             }
         }
     }
-    
+	
     static var reabs = ~/^([a-z]:|\\\\|\/)/i;
     public static function directory(dir : String, alt = ".") {
         if (dir == null)

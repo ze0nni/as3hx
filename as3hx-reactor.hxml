@@ -1,0 +1,4 @@
+-cp ./src/
+-lib haxe-files
+-neko run-reactor.n
+-main RunReactor
