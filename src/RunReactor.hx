@@ -6,6 +6,7 @@ import hx.files.*;
 import hx.files.watcher.*;
 
 using haxe.io.Path;
+using StringTools;
 
 class RunReactor 
 {
