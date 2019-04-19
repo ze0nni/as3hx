@@ -120,3 +120,16 @@ while (i < 8) {
     i++;
 }
 ```
+
+# as3hx reactor
+
+### Build
+
+    haxe as3hx-reactor.hxml
+
+### Use
+
+    neko run-reactor.n test/ out/
+    
+While as3hx reactor running you can edit as-files from `test/` directory
+and it will convert to `out/*.hx` in live.
